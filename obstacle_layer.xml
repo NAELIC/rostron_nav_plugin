@@ -1,0 +1,10 @@
+<library path="rostron_nav_plugin_core">
+    <class 
+        name="rostron_nav_costmap_plugin/ObstacleLayer" 
+        type="rostron_nav_costmap_plugin::ObstacleLayer" 
+        base_class_type="nav2_costmap_2d::Layer">
+        <description>
+            Plugin which create a costmap of all obstacles for rostron project
+        </description>
+    </class>
+</library>

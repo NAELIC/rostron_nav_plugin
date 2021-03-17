@@ -42,9 +42,12 @@
  *********************************************************************/
 #pragma once
 
+#include <memory>
+
 #include "rclcpp/rclcpp.hpp"
 #include "nav2_costmap_2d/layer.hpp"
 #include "nav2_costmap_2d/layered_costmap.hpp"
+#include "rostron_interfaces/msg/robots.hpp"
 
 namespace rostron_nav_costmap_plugin
 {
@@ -71,18 +74,19 @@ namespace rostron_nav_costmap_plugin
 
     virtual void onFootprintChanged();
 
-    virtual bool isClearable() { return false; }
+    virtual bool isClearable() { return true; }
+
+    void allies_callback(const rostron_interfaces::msg::Robots::SharedPtr msg);
+    void opponents_callback(const rostron_interfaces::msg::Robots::SharedPtr msg);
+
+    double dist(const double x1, const double y1, const double x2, const double y2);
 
   private:
-    double last_min_x_, last_min_y_, last_max_x_, last_max_y_;
+    rclcpp::Subscription<rostron_interfaces::msg::Robots>::SharedPtr pub_allies_;
+    rclcpp::Subscription<rostron_interfaces::msg::Robots>::SharedPtr pub_opponents_;
 
-    // Indicates that the entire gradient should be recalculated next time.
-    bool need_recalculation_;
-
-    // Size of gradient in cells
-    int GRADIENT_SIZE = 20;
-    // Step of increasing cost per one cell in gradient
-    int GRADIENT_FACTOR = 10;
+    rostron_interfaces::msg::Robots allies_;
+    rostron_interfaces::msg::Robots opponents_;
   };
 
 } // namespace rostron_nav_costmap_plugin

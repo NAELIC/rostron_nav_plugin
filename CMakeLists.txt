@@ -21,11 +21,13 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(nav2_costmap_2d REQUIRED)
 find_package(pluginlib REQUIRED)
+find_package(rostron_interfaces REQUIRED)
 
 set(dep_pkgs
     rclcpp
     nav2_costmap_2d
-    pluginlib)
+    pluginlib
+    rostron_interfaces)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

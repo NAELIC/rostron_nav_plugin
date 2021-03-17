@@ -11,10 +11,7 @@ using nav2_costmap_2d::NO_INFORMATION;
 namespace rostron_nav_costmap_plugin
 {
 
-  ObstacleLayer::ObstacleLayer() : last_min_x_(-std::numeric_limits<float>::max()),
-                                   last_min_y_(-std::numeric_limits<float>::max()),
-                                   last_max_x_(std::numeric_limits<float>::max()),
-                                   last_max_y_(std::numeric_limits<float>::max())
+  ObstacleLayer::ObstacleLayer()
   {
   }
 
@@ -27,7 +24,15 @@ namespace rostron_nav_costmap_plugin
     // auto node = node_.lock();
     declareParameter("enabled", rclcpp::ParameterValue(true));
     node_->get_parameter(name_ + "." + "enabled", enabled_);
-    need_recalculation_ = false;
+
+    pub_allies_ = node_->create_subscription<rostron_interfaces::msg::Robots>(
+        "/yellow/allies",
+        10,
+        std::bind(&ObstacleLayer::allies_callback, this, std::placeholders::_1));
+    pub_opponents_ = node_->create_subscription<rostron_interfaces::msg::Robots>(
+        "/yellow/opponents",
+        10,
+        std::bind(&ObstacleLayer::opponents_callback, this, std::placeholders::_1));
   }
 
   // The method is called to ask the plugin: which area of costmap it needs to update.
@@ -38,49 +43,10 @@ namespace rostron_nav_costmap_plugin
       double /*robot_x*/, double /*robot_y*/, double /*robot_yaw*/, double *min_x,
       double *min_y, double *max_x, double *max_y)
   {
-        RCLCPP_INFO(rclcpp::get_logger(
-                     "nav2_costmap_2d"),
-                 "GradientLayer::onFootprintChanged(): num footprint points: %lu",
-                 layered_costmap_->getFootprint().size());
-    RCLCPP_INFO(rclcpp::get_logger(
-                     "nav2_costmap_2d"),
-                 "resolution: %f",
-                 layered_costmap_->getCostmap()->getResolution());
-    RCLCPP_INFO(rclcpp::get_logger(
-                     "nav2_costmap_2d"),
-                 "w x h: %f %f",
-                 layered_costmap_->getCostmap()->getSizeInMetersX(),layered_costmap_->getCostmap()->getSizeInMetersY());
-
-    if (need_recalculation_)
-    {
-      last_min_x_ = *min_x;
-      last_min_y_ = *min_y;
-      last_max_x_ = *max_x;
-      last_max_y_ = *max_y;
-      // For some reason when I make these -<double>::max() it does not
-      // work with Costmap2D::worldToMapEnforceBounds(), so I'm using
-      // -<float>::max() instead.
-      *min_x = -std::numeric_limits<float>::max();
-      *min_y = -std::numeric_limits<float>::max();
-      *max_x = std::numeric_limits<float>::max();
-      *max_y = std::numeric_limits<float>::max();
-      need_recalculation_ = false;
-    }
-    else
-    {
-      double tmp_min_x = last_min_x_;
-      double tmp_min_y = last_min_y_;
-      double tmp_max_x = last_max_x_;
-      double tmp_max_y = last_max_y_;
-      last_min_x_ = *min_x;
-      last_min_y_ = *min_y;
-      last_max_x_ = *max_x;
-      last_max_y_ = *max_y;
-      *min_x = std::min(tmp_min_x, *min_x);
-      *min_y = std::min(tmp_min_y, *min_y);
-      *max_x = std::max(tmp_max_x, *max_x);
-      *max_y = std::max(tmp_max_y, *max_y);
-    }
+    *min_x = 0;
+    *min_y = 0;
+    *max_x = layered_costmap_->getCostmap()->getSizeInCellsX();
+    *max_y = layered_costmap_->getCostmap()->getSizeInCellsY();
   }
 
   // The method is called when footprint was changed.
@@ -88,8 +54,6 @@ namespace rostron_nav_costmap_plugin
   void
   ObstacleLayer::onFootprintChanged()
   {
-    need_recalculation_ = true;
-
     RCLCPP_DEBUG(rclcpp::get_logger(
                      "nav2_costmap_2d"),
                  "GradientLayer::onFootprintChanged(): num footprint points: %lu",
@@ -107,11 +71,7 @@ namespace rostron_nav_costmap_plugin
       int max_j)
   {
     if (!enabled_)
-    {
       return;
-    }
-
-
 
     // master_array - is a direct pointer to the resulting master_grid.
     // master_grid - is a resulting costmap combined from all layers.
@@ -133,34 +93,63 @@ namespace rostron_nav_costmap_plugin
     // avoiding the updates of whole area.
     //
     // Fixing window coordinates with map size if necessary.
-    min_i = std::max(0, min_i);
-    min_j = std::max(0, min_j);
-    max_i = std::min(static_cast<int>(size_x), max_i);
-    max_j = std::min(static_cast<int>(size_y), max_j);
+    // min_i = std::max(0, min_i);
+    // min_j = std::max(0, min_j);
+    // max_i = std::min(static_cast<int>(size_x), max_i);
+    // max_j = std::min(static_cast<int>(size_y), max_j);
 
     // Simply computing one-by-one cost per each cell
-    int gradient_index;
-    for (int j = min_j; j < max_j; j++)
+    for (unsigned int j = 0; j < size_y; j++)
     {
-      // Reset gradient_index each time when reaching the end of re-calculated window
-      // by OY axis.
-      gradient_index = 0;
-      for (int i = min_i; i < max_i; i++)
+      for (unsigned int i = 0; i < size_x; i++)
       {
         int index = master_grid.getIndex(i, j);
+        double x, y;
+        master_grid.mapToWorld(i, j, x, y);
+
         // setting the gradient cost
-        unsigned char cost = (LETHAL_OBSTACLE - gradient_index * GRADIENT_FACTOR) % 255;
-        if (gradient_index <= GRADIENT_SIZE)
+        // master_array[index] = 0;
+
+        for (auto r : allies_.robots)
         {
-          gradient_index++;
+          if (r.id == 0 || !r.active)
+            continue;
+
+          auto d = dist(x, y, r.pose.position.x, r.pose.position.y);
+          if (d - 0.2 < 0.01)
+          {
+            master_array[index] = LETHAL_OBSTACLE;
+          }
         }
-        else
+
+        for (auto r : opponents_.robots)
         {
-          gradient_index = 0;
+          if (!r.active)
+            continue;
+
+          auto d = dist(x, y, r.pose.position.x, r.pose.position.y);
+          if (d - 0.2 < 0.01)
+          {
+            master_array[index] = LETHAL_OBSTACLE;
+          }
         }
-        master_array[index] = cost;
       }
     }
+  }
+
+  void ObstacleLayer::allies_callback(const rostron_interfaces::msg::Robots::SharedPtr msg)
+  {
+    allies_.set__robots(msg->robots);
+  }
+
+  void ObstacleLayer::opponents_callback(const rostron_interfaces::msg::Robots::SharedPtr msg)
+  {
+    opponents_.set__robots(msg->robots);
+  }
+
+  double ObstacleLayer::dist(const double x1, const double y1, const double x2, const double y2)
+  {
+    return sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2));
   }
 
 } // namespace nav2_gradient_costmap_plugin

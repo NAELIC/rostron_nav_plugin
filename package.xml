@@ -15,6 +15,7 @@
   <depend>nav2_costmap_2d</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
+  <depend>rostron_interfaces</depend>
 
   <export>
     <costmap_2d plugin="${prefix}/obstacle_layer.xml" />

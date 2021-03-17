@@ -43,10 +43,17 @@ namespace rostron_nav_costmap_plugin
       double /*robot_x*/, double /*robot_y*/, double /*robot_yaw*/, double *min_x,
       double *min_y, double *max_x, double *max_y)
   {
-    *min_x = 0;
-    *min_y = 0;
-    *max_x = layered_costmap_->getCostmap()->getSizeInCellsX();
-    *max_y = layered_costmap_->getCostmap()->getSizeInCellsY();
+    double wx, wy;
+    layered_costmap_->getCostmap()->mapToWorld(0, 0, wx, wy);
+    *min_x = std::min(*min_x, wx);
+    *min_y = std::min(*min_y, wy);
+
+    layered_costmap_->getCostmap()->mapToWorld(
+        layered_costmap_->getCostmap()->getSizeInCellsX(),
+        layered_costmap_->getCostmap()->getSizeInCellsY(),
+        wx, wy);
+    *max_x = std::max(*max_x, wx);
+    *max_y = std::max(*max_y, wy);
   }
 
   // The method is called when footprint was changed.
@@ -116,7 +123,7 @@ namespace rostron_nav_costmap_plugin
             continue;
 
           auto d = dist(x, y, r.pose.position.x, r.pose.position.y);
-          if (d - 0.2 < 0.01)
+          if (d - 0.3 < 0.01)
           {
             master_array[index] = LETHAL_OBSTACLE;
           }
@@ -128,7 +135,7 @@ namespace rostron_nav_costmap_plugin
             continue;
 
           auto d = dist(x, y, r.pose.position.x, r.pose.position.y);
-          if (d - 0.2 < 0.01)
+          if (d - 0.25 < 0.001)
           {
             master_array[index] = LETHAL_OBSTACLE;
           }

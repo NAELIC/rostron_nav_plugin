@@ -87,6 +87,8 @@ namespace rostron_nav_costmap_plugin
 
     rostron_interfaces::msg::Robots allies_;
     rostron_interfaces::msg::Robots opponents_;
+
+    uint32_t robot_id = 0;
   };
 
 } // namespace rostron_nav_costmap_plugin

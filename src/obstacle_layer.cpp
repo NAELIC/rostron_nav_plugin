@@ -23,7 +23,14 @@ namespace rostron_nav_costmap_plugin
   {
     // auto node = node_.lock();
     declareParameter("enabled", rclcpp::ParameterValue(true));
+    declareParameter("robot_id", rclcpp::ParameterValue(0.0));
+
+    
     node_->get_parameter(name_ + "." + "enabled", enabled_);
+    
+    double id;
+    node_->get_parameter(name_ + ".robot_id", id);
+    robot_id = (uint32_t) id;
 
     pub_allies_ = node_->create_subscription<rostron_interfaces::msg::Robots>(
         "/yellow/allies",
@@ -80,6 +87,11 @@ namespace rostron_nav_costmap_plugin
     if (!enabled_)
       return;
 
+    RCLCPP_INFO(rclcpp::get_logger(
+                    "nav2_costmap_2d"),
+                "robot_id %d",
+                robot_id);
+
     // master_array - is a direct pointer to the resulting master_grid.
     // master_grid - is a resulting costmap combined from all layers.
     // By using this pointer all layers will be overwritten!
@@ -119,7 +131,7 @@ namespace rostron_nav_costmap_plugin
 
         for (auto r : allies_.robots)
         {
-          if (r.id == 0 || !r.active)
+          if (r.id == robot_id || !r.active)
             continue;
 
           auto d = dist(x, y, r.pose.position.x, r.pose.position.y);

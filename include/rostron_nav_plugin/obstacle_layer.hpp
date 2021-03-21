@@ -48,7 +48,9 @@
 #include "nav2_costmap_2d/layer.hpp"
 #include "nav2_costmap_2d/layered_costmap.hpp"
 #include "rostron_interfaces/msg/robots.hpp"
-
+#include "nav_msgs/msg/occupancy_grid.hpp"
+#include "tf2/convert.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
 namespace rostron_nav_costmap_plugin
 {
 
@@ -81,14 +83,31 @@ namespace rostron_nav_costmap_plugin
 
     double dist(const double x1, const double y1, const double x2, const double y2);
 
+    void processMap(const nav_msgs::msg::OccupancyGrid &new_map);
+
+    /**
+   * @brief  Callback to update the costmap's map from the map_server
+   * @param new_map The map to put into the costmap. The origin of the new
+   * map along with its size will determine what parts of the costmap's
+   * static map are overwritten.
+   */
+    void incomingMap(const nav_msgs::msg::OccupancyGrid::SharedPtr new_map);
+
   private:
     rclcpp::Subscription<rostron_interfaces::msg::Robots>::SharedPtr pub_allies_;
     rclcpp::Subscription<rostron_interfaces::msg::Robots>::SharedPtr pub_opponents_;
+
+    rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
 
     rostron_interfaces::msg::Robots allies_;
     rostron_interfaces::msg::Robots opponents_;
 
     uint32_t robot_id = 0;
+
+    bool map_received_{false};
+    tf2::Duration transform_tolerance_;
+    std::string global_frame_; ///< @brief The global frame for the costmap
+    std::string map_frame_;    /// @brief frame that map is located in
   };
 
 } // namespace rostron_nav_costmap_plugin

@@ -86,12 +86,7 @@ namespace rostron_nav_costmap_plugin
   {
     if (!enabled_)
       return;
-
-    RCLCPP_INFO(rclcpp::get_logger(
-                    "nav2_costmap_2d"),
-                "robot_id %d",
-                robot_id);
-
+      
     // master_array - is a direct pointer to the resulting master_grid.
     // master_grid - is a resulting costmap combined from all layers.
     // By using this pointer all layers will be overwritten!

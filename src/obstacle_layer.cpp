@@ -21,16 +21,20 @@ namespace rostron_nav_costmap_plugin
   void
   ObstacleLayer::onInitialize()
   {
+    global_frame_ = layered_costmap_->getGlobalFrameID();
+    RCLCPP_INFO(node_->get_logger(), "StaticLayer: %s", global_frame_);
+
     // auto node = node_.lock();
     declareParameter("enabled", rclcpp::ParameterValue(true));
     declareParameter("robot_id", rclcpp::ParameterValue(0.0));
+    declareParameter("map_topic", rclcpp::ParameterValue(""));
+    declareParameter("transform_tolerance", rclcpp::ParameterValue(0.0));
 
-    
     node_->get_parameter(name_ + "." + "enabled", enabled_);
-    
+
     double id;
     node_->get_parameter(name_ + ".robot_id", id);
-    robot_id = (uint32_t) id;
+    robot_id = (uint32_t)id;
 
     pub_allies_ = node_->create_subscription<rostron_interfaces::msg::Robots>(
         "/yellow/allies",
@@ -40,6 +44,17 @@ namespace rostron_nav_costmap_plugin
         "/yellow/opponents",
         10,
         std::bind(&ObstacleLayer::opponents_callback, this, std::placeholders::_1));
+    double temp_tf_tol = 0.0;
+    node_->get_parameter("transform_tolerance", temp_tf_tol);
+    transform_tolerance_ = tf2::durationFromSec(temp_tf_tol);
+    std::string map_topic;
+
+    node_->get_parameter("map_topic", map_topic);
+
+    rclcpp::QoS map_qos(10); // initialize to default
+    map_sub_ = node_->create_subscription<nav_msgs::msg::OccupancyGrid>(
+        map_topic, map_qos,
+        std::bind(&ObstacleLayer::incomingMap, this, std::placeholders::_1));
   }
 
   // The method is called to ask the plugin: which area of costmap it needs to update.
@@ -74,6 +89,21 @@ namespace rostron_nav_costmap_plugin
                  layered_costmap_->getFootprint().size());
   }
 
+  void ObstacleLayer::processMap(const nav_msgs::msg::OccupancyGrid &new_map)
+  {
+    map_frame_ = new_map.header.frame_id;
+    RCLCPP_INFO(node_->get_logger(), "StaticLayer: %s", map_frame_);
+  }
+
+  void ObstacleLayer::incomingMap(const nav_msgs::msg::OccupancyGrid::SharedPtr new_map)
+  {
+    if (!map_received_)
+    {
+      map_received_ = true;
+      processMap(*new_map);
+    }
+  }
+
   // The method is called when costmap recalculation is required.
   // It updates the costmap within its window bounds.
   // Inside this method the costmap gradient is generated and is writing directly
@@ -86,65 +116,106 @@ namespace rostron_nav_costmap_plugin
   {
     if (!enabled_)
       return;
-      
-    // master_array - is a direct pointer to the resulting master_grid.
-    // master_grid - is a resulting costmap combined from all layers.
-    // By using this pointer all layers will be overwritten!
-    // To work with costmap layer and merge it with other costmap layers,
-    // please use costmap_ pointer instead (this is pointer to current
-    // costmap layer grid) and then call one of updates methods:
-    // - updateWithAddition()
-    // - updateWithMax()
-    // - updateWithOverwrite()
-    // - updateWithTrueOverwrite()
-    // In this case using master_array pointer is equal to modifying local costmap_
-    // pointer and then calling updateWithTrueOverwrite():
+
     unsigned char *master_array = master_grid.getCharMap();
     unsigned int size_x = master_grid.getSizeInCellsX(), size_y = master_grid.getSizeInCellsY();
 
-    // {min_i, min_j} - {max_i, max_j} - are update-window coordinates.
-    // These variables are used to update the costmap only within this window
-    // avoiding the updates of whole area.
-    //
-    // Fixing window coordinates with map size if necessary.
-    // min_i = std::max(0, min_i);
-    // min_j = std::max(0, min_j);
-    // max_i = std::min(static_cast<int>(size_x), max_i);
-    // max_j = std::min(static_cast<int>(size_y), max_j);
+    min_i = std::max(0, min_i);
+    min_j = std::max(0, min_j);
+    max_i = std::min(static_cast<int>(size_x), max_i);
+    max_j = std::min(static_cast<int>(size_y), max_j);
 
-    // Simply computing one-by-one cost per each cell
-    for (unsigned int j = 0; j < size_y; j++)
+    if (!layered_costmap_->isRolling())
     {
-      for (unsigned int i = 0; i < size_x; i++)
+      // Simply computing one-by-one cost per each cell
+      for (int j = min_j; j < max_j; j++)
       {
-        int index = master_grid.getIndex(i, j);
-        double x, y;
-        master_grid.mapToWorld(i, j, x, y);
-
-        // setting the gradient cost
-        // master_array[index] = 0;
-
-        for (auto r : allies_.robots)
+        for (int i = min_i; i < max_i; i++)
         {
-          if (r.id == robot_id || !r.active)
-            continue;
-
-          auto d = dist(x, y, r.pose.position.x, r.pose.position.y);
-          if (d - 0.3 < 0.01)
+          int index = master_grid.getIndex(i, j);
+          double x, y;
+          master_grid.mapToWorld(i, j, x, y);
+          for (auto r : allies_.robots)
           {
-            master_array[index] = LETHAL_OBSTACLE;
+            if (r.id == robot_id || !r.active)
+              continue;
+
+            auto d = dist(x, y, r.pose.position.x, r.pose.position.y);
+            if (d - 0.3 < 0.01)
+            {
+              master_grid.setCost(i, j, LETHAL_OBSTACLE);
+            }
+          }
+
+          for (auto r : opponents_.robots)
+          {
+            if (!r.active)
+              continue;
+
+            auto d = dist(x, y, r.pose.position.x, r.pose.position.y);
+            if (d - 0.25 < 0.001)
+            {
+              master_array[index] = LETHAL_OBSTACLE;
+            }
           }
         }
+      }
+    }
+    else
+    {
+      if (!map_received_)
+        return;
 
-        for (auto r : opponents_.robots)
+      geometry_msgs::msg::TransformStamped transform;
+      try
+      {
+        RCLCPP_INFO(node_->get_logger(), "StaticLayer: %s", map_frame_.c_str());
+
+        RCLCPP_INFO(node_->get_logger(), "StaticLayer: %s", global_frame_.c_str());
+        transform = tf_->lookupTransform(
+            map_frame_, global_frame_, tf2::TimePointZero,
+            transform_tolerance_);
+      }
+      catch (tf2::TransformException &ex)
+      {
+        RCLCPP_ERROR(node_->get_logger(), "StaticLayer: %s", ex.what());
+        return;
+      }
+
+      tf2::Transform tf2_transform;
+      tf2::fromMsg(transform.transform, tf2_transform);
+
+      for (int j = min_j; j < max_j; j++)
+      {
+        for (int i = min_i; i < max_i; i++)
         {
-          if (!r.active)
-            continue;
-
-          auto d = dist(x, y, r.pose.position.x, r.pose.position.y);
-          if (d - 0.25 < 0.001)
+          double x, y;
+          master_grid.mapToWorld(i, j, x, y);
+          tf2::Vector3 p(x, y, 0);
+          p = tf2_transform * p;
+        
+          for (auto r : allies_.robots)
           {
-            master_array[index] = LETHAL_OBSTACLE;
+            if (r.id == robot_id || !r.active)
+              continue;
+
+            auto d = dist(p.x(), p.y(), r.pose.position.x, r.pose.position.y);
+            if (d - 0.3 < 0.01)
+            {
+              master_grid.setCost(i, j, LETHAL_OBSTACLE);
+            }
+          }
+
+          for (auto r : opponents_.robots)
+          {
+            if (!r.active)
+              continue;
+
+            auto d = dist(p.x(), p.y(), r.pose.position.x, r.pose.position.y);
+            if (d - 0.25 < 0.001)
+            {
+              master_grid.setCost(i, j, LETHAL_OBSTACLE);
+            }
           }
         }
       }

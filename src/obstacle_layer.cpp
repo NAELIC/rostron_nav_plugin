@@ -22,7 +22,6 @@ namespace rostron_nav_costmap_plugin
   ObstacleLayer::onInitialize()
   {
     global_frame_ = layered_costmap_->getGlobalFrameID();
-    RCLCPP_INFO(node_->get_logger(), "StaticLayer: %s", global_frame_);
 
     // auto node = node_.lock();
     declareParameter("enabled", rclcpp::ParameterValue(true));
@@ -92,7 +91,6 @@ namespace rostron_nav_costmap_plugin
   void ObstacleLayer::processMap(const nav_msgs::msg::OccupancyGrid &new_map)
   {
     map_frame_ = new_map.header.frame_id;
-    RCLCPP_INFO(node_->get_logger(), "StaticLayer: %s", map_frame_);
   }
 
   void ObstacleLayer::incomingMap(const nav_msgs::msg::OccupancyGrid::SharedPtr new_map)
@@ -169,9 +167,6 @@ namespace rostron_nav_costmap_plugin
       geometry_msgs::msg::TransformStamped transform;
       try
       {
-        RCLCPP_INFO(node_->get_logger(), "StaticLayer: %s", map_frame_.c_str());
-
-        RCLCPP_INFO(node_->get_logger(), "StaticLayer: %s", global_frame_.c_str());
         transform = tf_->lookupTransform(
             map_frame_, global_frame_, tf2::TimePointZero,
             transform_tolerance_);

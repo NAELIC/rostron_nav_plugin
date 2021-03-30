@@ -104,6 +104,8 @@ namespace rostron_nav_costmap_plugin
 
     uint32_t robot_id = 0;
 
+    std::string team;
+
     bool map_received_{false};
     tf2::Duration transform_tolerance_;
     std::string global_frame_; ///< @brief The global frame for the costmap

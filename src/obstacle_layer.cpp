@@ -28,19 +28,21 @@ namespace rostron_nav_costmap_plugin
     declareParameter("robot_id", rclcpp::ParameterValue(0.0));
     declareParameter("map_topic", rclcpp::ParameterValue(""));
     declareParameter("transform_tolerance", rclcpp::ParameterValue(0.0));
+    declareParameter("team", rclcpp::ParameterValue(""));
 
     node_->get_parameter(name_ + "." + "enabled", enabled_);
+    node_->get_parameter(name_ + "." + "team", team);
 
     double id;
     node_->get_parameter(name_ + ".robot_id", id);
     robot_id = (uint32_t)id;
-
+    std::cout << "/" + team  + "/allies" << std::endl;
     pub_allies_ = node_->create_subscription<rostron_interfaces::msg::Robots>(
-        "/yellow/allies",
+        "/" + team  + "/allies",
         10,
         std::bind(&ObstacleLayer::allies_callback, this, std::placeholders::_1));
     pub_opponents_ = node_->create_subscription<rostron_interfaces::msg::Robots>(
-        "/yellow/opponents",
+        "/" + team + "/opponents",
         10,
         std::bind(&ObstacleLayer::opponents_callback, this, std::placeholders::_1));
     double temp_tf_tol = 0.0;

@@ -22,38 +22,39 @@ namespace rostron_nav_costmap_plugin
   ObstacleLayer::onInitialize()
   {
     global_frame_ = layered_costmap_->getGlobalFrameID();
+    auto node = node_.lock(); 
 
     // auto node = node_.lock();
     declareParameter("enabled", rclcpp::ParameterValue(true));
-    declareParameter("robot_id", rclcpp::ParameterValue(0.0));
+    declareParameter("robot_id", rclcpp::ParameterValue(0));
     declareParameter("map_topic", rclcpp::ParameterValue(""));
     declareParameter("transform_tolerance", rclcpp::ParameterValue(0.0));
     declareParameter("team", rclcpp::ParameterValue(""));
 
-    node_->get_parameter(name_ + "." + "enabled", enabled_);
-    node_->get_parameter(name_ + "." + "team", team);
+    node->get_parameter(name_ + "." + "enabled", enabled_);
+    node->get_parameter(name_ + "." + "team", team);
 
-    double id;
-    node_->get_parameter(name_ + ".robot_id", id);
+    int id;
+    node->get_parameter(name_ + ".robot_id", id);
     robot_id = (uint32_t)id;
     std::cout << "/" + team  + "/allies" << std::endl;
-    pub_allies_ = node_->create_subscription<rostron_interfaces::msg::Robots>(
+    pub_allies_ = node->create_subscription<rostron_interfaces::msg::Robots>(
         "/" + team  + "/allies",
         10,
         std::bind(&ObstacleLayer::allies_callback, this, std::placeholders::_1));
-    pub_opponents_ = node_->create_subscription<rostron_interfaces::msg::Robots>(
+    pub_opponents_ = node->create_subscription<rostron_interfaces::msg::Robots>(
         "/" + team + "/opponents",
         10,
         std::bind(&ObstacleLayer::opponents_callback, this, std::placeholders::_1));
     double temp_tf_tol = 0.0;
-    node_->get_parameter("transform_tolerance", temp_tf_tol);
+    node->get_parameter("transform_tolerance", temp_tf_tol);
     transform_tolerance_ = tf2::durationFromSec(temp_tf_tol);
     std::string map_topic;
 
-    node_->get_parameter("map_topic", map_topic);
+    node->get_parameter("map_topic", map_topic);
 
     rclcpp::QoS map_qos(10); // initialize to default
-    map_sub_ = node_->create_subscription<nav_msgs::msg::OccupancyGrid>(
+    map_sub_ = node->create_subscription<nav_msgs::msg::OccupancyGrid>(
         map_topic, map_qos,
         std::bind(&ObstacleLayer::incomingMap, this, std::placeholders::_1));
   }
@@ -116,7 +117,7 @@ namespace rostron_nav_costmap_plugin
   {
     if (!enabled_)
       return;
-
+    auto node = node_.lock(); 
     unsigned char *master_array = master_grid.getCharMap();
     unsigned int size_x = master_grid.getSizeInCellsX(), size_y = master_grid.getSizeInCellsY();
 
@@ -175,7 +176,7 @@ namespace rostron_nav_costmap_plugin
       }
       catch (tf2::TransformException &ex)
       {
-        RCLCPP_ERROR(node_->get_logger(), "StaticLayer: %s", ex.what());
+        RCLCPP_ERROR(node->get_logger(), "StaticLayer: %s", ex.what());
         return;
       }
 
